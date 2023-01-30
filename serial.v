@@ -1,53 +1,32 @@
 // Contains simple byte-based rx/tx support for the command interface.
 // modularized because it became stable and requires no further changes, and has small interfaces.
 
-// This runs on the RS422 full-duplex port on the cRIO (request 500000 baud) but runs
-// actually around 460800 bps.
+// This runs on the RS422 full-duplex port on the RasPi
 // The simplest possible 'core' between the two is to just connect one to the other
 // and observe that all data is looped back intact.
-// The serialrx part includes a buffer so a byte-per system clk can be sent without loss.
-// This allows a more complex multi-cycle core to react to commands and emit multi-byte
-// data in response to single command bytes.
 
-// That core is not here - it is in the top.v file so it has unrestricted access to all
-// signals, and can define control registers as well. It remains in flux as signals
-// are added and removed as necessary.
+// Needs to run internally at 4x the selected baud rate
 
-// 50_000_000 / 19_200 ~= 2604;  /4 = 651
-// 19200 baud is 'slow mode'
+// 40 / 2.5= 16/4 = 5
+// 2.5M baud is 'fastest mode'
 
-// 50 / 2.5 == 20; /4 = 5
-// 2.5M baud is 'fastest mode' - but failed - the cRIO-9045 could not swing the voltage fast enough.
-// 50_000_000 / 500_000 = 100; /4 = 25
-// 500000 baud is fastest practical with NI's wiring.
-
-//wire[9:0] baudmax = 10'd650; // for 19200 - 0..650 = 651 cycles
-
-`define BAUDMAX 5'd26
-
-// should have been 24 for 500000, but the cRIO-9045 doesn't go at the right speed, instead seems to be doing around 463k when asked for 500k.
-// wire[9:0] baudmax = 10'd19;
+`define BAUDMAX 5'd4
 
 module serialrx(input clk, rxserialin, output reg newrxstrobe, output reg[7:0] rxbyte);
 
-
-// ### 19200 baud rate strobe generator
-
 // #### rx generator
-
 
 // line always idles high if connected
 // 8N1 format only: start bit is always 0, stop always 1.
 
-//reg[9:0] brgenctr; // for 19200
-reg[4:0] brgenctr; // for 500000
+reg[4:0] brgenctr;
 reg[1:0] rxqclk;
 reg[1:0] rxclkflg;
-wire en_rxqclk; // input to this block -> set high when rx negative edge first arrives to properly synchronise sampling to middle of bits
+wire en_rxqclk; // feedback input to this block -> set high when rx negative edge first arrives to properly synchronise sampling to middle of bits
 always @(posedge clk)
 begin
-    brgenctr <= en_rxqclk ? ((brgenctr == `BAUDMAX) ? 0 : {brgenctr + 1}) : 0; //runs 0..24: 25 states, or 0..650: 651 states
-    rxqclk <= en_rxqclk ? ((brgenctr == 0)? {rxqclk + 2'd1} : rxqclk) : 0; // receive quadrature clk -- idles as 0, on en_rxqclk edge spends only 1 system clk in rxqclk=0
+    brgenctr <= en_rxqclk ? ((brgenctr == `BAUDMAX) ? 1 : {brgenctr + 1}) : 1;
+    rxqclk <= en_rxqclk ? ((brgenctr == 1)? {rxqclk + 2'd1} : rxqclk) : 0; // receive quadrature clk -- idles as 0, on en_rxqclk edge spends only 1 system clk in rxqclk=0
     rxclkflg <= {rxclkflg[0], (rxqclk==2'd3)}; // delay sample time to middle of bit for clearer reception (initially spends nearly no time in state 0 -> start of state 3 is middle.
 end
 wire rxs = rxclkflg[0] > rxclkflg[1]; // strobe to sample bits
@@ -104,8 +83,8 @@ reg[1:0] txclkflg;
 wire en_txqclk; // ensures minimum latency when transmitting a new byte
 always @(posedge clk)
 begin
-    btgenctr <= en_txqclk ? ((btgenctr == `BAUDMAX) ? 0 : {btgenctr + 1}) : 0;
-    txqclk <= en_txqclk ? ((btgenctr == 0)? {txqclk+1} : txqclk) : 0;
+    btgenctr <= en_txqclk ? ((btgenctr == `BAUDMAX) ? 1 : {btgenctr + 1}) : 1;
+    txqclk <= en_txqclk ? ((btgenctr == 1)? {txqclk+1} : txqclk) : 0;
     txclkflg <= {txclkflg[0], (txqclk==2'd1)}; // no delay necessary here
 end
 wire txs = txclkflg[0] > txclkflg[1]; // strobe to send bits
@@ -134,17 +113,15 @@ end
 // send fifo so we can burst-write multiple bytes
 wire full;
 wire[7:0] txbyte;
-fifo_sc_top txfifo(
-  .Data(txchar),
-  .Clk(clk),
-  .WrEn(xmit&&~full),
-  .RdEn(fiforead),
-  .Reset(~rst_n),
-  .Almost_Empty(),
-  .Almost_Full(),
-  .Q(txbyte),
-  .Empty(empty),
-  .Full(full)
+fifo txfifo(
+  .clk(clk),
+  .nreset(resetn),
+  .read_i(fiforead),
+  .write_i(xmit&&~full),
+  .data_i(txchar),
+  .data_o(txbyte),
+  .fifoFull_o(full),
+  .fifoEmpty_o(empty)
 );
 
 
