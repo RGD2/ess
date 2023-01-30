@@ -1,0 +1,20 @@
+set_io clk_100MHz 49
+set_io led1 110
+set_io led2 93
+set_io led3 94
+# These are master SPI connections to the MAX5216
+set_io SCL 134
+set_io MOSI 138
+set_io CSn 141
+# for the encoder simulator output signals:
+set_io tdc 142
+set_io tic 143
+# These connect to /dev/ttyAMA0, but from FPGA's pov (tx is FPGA output)
+set_io rx 113
+set_io tx 112
+# These connect to raspi SPI0 : raspi is the bus master
+set_io slmosi 90
+set_io slmiso 87
+set_io slsck 79
+set_io slce0n 85
+set_io slce1n 78
