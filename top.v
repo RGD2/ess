@@ -75,6 +75,10 @@ module top (
 	// serial receiver
 	serialrx rxer (.clk(clk), .rxserialin(rx), .newrxstrobe(write_i), .rxbyte(data_i));
 
+    // serial loopback (for testing)
+    serialtx testloop (.clk(clk), .rst_n(resetn), .xmit(write_i), .txchar(data_i), .rsout(tx));
+
+
 	reg [31:0] cmd;
 	
 	// 0 waitin
