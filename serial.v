@@ -9,6 +9,8 @@
 
 // 40 / 2.5= 16/4 = 5
 // 2.5M baud is 'fastest mode'
+// subtract 1 for the max count, because it counts from zero, and the last
+// will be == to the max count.
 
 `define BAUDMAX 5'd4
 
@@ -72,7 +74,7 @@ endmodule
 
 
 
-module serialtx(input clk, rst_n, input xmit, input[7:0] txchar, output reg rsout);
+module serialtx(input clk, resetn, input xmit, input[7:0] txchar, output reg rsout);
 
 // #### tx generator
 //reg[9:0] btgenctr; // 19200

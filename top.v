@@ -75,9 +75,16 @@ module top (
 	
 	// serial receiver
 	serialrx rxer (.clk(clk), .rxserialin(rx), .newrxstrobe(write_i), .rxbyte(data_i));
+    
+    reg [31:0] time;
+    always @(posedge clk) begin
+        time <= time + 1;
+    end
+
+    assign led1 = time[24];
 
     // serial loopback (for testing)
-    serialtx testloop (.clk(clk), .rst_n(resetn), .xmit(write_i), .txchar(data_i), .rsout(tx));
+    serialtx testloop (.clk(clk), .resetn(resetn), .xmit(write_i), .txchar(data_i), .rsout(tx));
 
     assign test = tx;
 
