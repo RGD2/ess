@@ -10,7 +10,8 @@ module top (
 	output slmiso,
 	input slsck,
 	input slce0n,
-	input slce1n
+	input slce1n,
+    output test
 );
 
 
@@ -78,6 +79,7 @@ module top (
     // serial loopback (for testing)
     serialtx testloop (.clk(clk), .rst_n(resetn), .xmit(write_i), .txchar(data_i), .rsout(tx));
 
+    assign test = tx;
 
 	reg [31:0] cmd;
 	
