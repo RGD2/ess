@@ -56,123 +56,178 @@ module top (
 		resetn <= &resetstate;
 	end
 
+	// serial receiver
+    wire [7:0] rxbyte;
+    wire newrx;
+	serialrx rxer (.clk(clk), .rxserialin(rx), .newrxstrobe(newrx), .rxbyte(rxbyte));
+    
 	// rxfifo
 	//
+    reg read_i;  // control from state machine
 	wire [7:0] data_o;
-	wire [7:0] data_i;
-	wire read_i, write_i;
 	wire fifoFull_o, fifoEmpty_o;
 	fifo rxqueue(
 		.clk(clk),
 		.nreset(resetn),
 		.read_i(read_i),
-		.write_i(write_i),
-		.data_i(data_i),
+		.write_i(newrx),
+		.data_i(rxbyte),
 		.data_o(data_o),
 		.fifoFull_o(fifoFull_o),
 		.fifoEmpty_o(fifoEmpty_o)
 	);
 	
-	// serial receiver
-	serialrx rxer (.clk(clk), .rxserialin(rx), .newrxstrobe(write_i), .rxbyte(data_i));
-    
     reg [31:0] time;
+    reg utick;
     always @(posedge clk) begin
         time <= time + 1;
+        utick <= (time[11:0]==0); // 102 us ticks
     end
 
-    assign led1 = time[24];
 
     // serial loopback (for testing)
-    serialtx testloop (.clk(clk), .resetn(resetn), .xmit(write_i), .txchar(data_i), .rsout(tx));
+    serialtx testloop (.clk(clk), .resetn(resetn), .xmit(newrx), .txchar(rxbyte), .rsout(tx));
 
-    assign test = tx;
+    // assign test = tx;
 
-	reg [31:0] cmd;
-	
+	wire running; // feedback from SPI driver
+	reg finished; // feedback from engine position timer
+
+    // main FSM
+
 	// 0 waitin
 	// 1 read
 	// " "
 	// 4 read4
 	// 5 waitout
 	// 6 writeout, loop
-	reg [2:0] state;
-	wire done;
+    // reg read_i; // already defined
+	reg [2:0] sm_state;
 	reg start;
+	reg [31:0] cmd;
 	reg [15:0] value;
 	reg [15:0] count;
 	
 	always @(posedge clk) begin
+
+        CSn <= 1'b1;
+        read_i <= 1'b0;
+        start <= 1'b0;
+
 		if (!resetn) begin
 			{value,count} <= 32'd0;
-			{start,state} <= 4'd0;
+			sm_state <= 3'd0;
 			cmd <= 32'd0;
 		end else begin
-			state <= state;
-			start <= 1'b0;
 			value <= value;
 			count <= count;
 			cmd <= cmd;
 
-			casez(state)
+			casex(sm_state)
 				3'd0: 
 				begin
-					state <= fifoEmpty_o ? 3'd0 : 3'd1;
-					read_i <= !fifoEmpty_o;
+                    // wait for available data
+                    // then load a 4byte command
+					sm_state <= fifoEmpty_o ? 3'd0 : 3'd1;
+                    read_i <= 1'b1;
 				end
-				3'b0xx:
-				begin
-					state <= state+3'b1;
-					cmd <= {cmd[23:0],data_o};
-					read_i <= 1'b1;
-				end
-				3'd4:
-				begin
-					state <= 3'd5;
-					cmd <= {cmd[23:0],data_o};
-					read_i <= 1'b0;
-				end
+                3'd4:
+                begin
+                    // read 4th byte, don't request another unless fifo is
+                    // empty
+					sm_state <= fifoEmpty_o ? sm_state : sm_state+3'b1;
+					cmd <= fifoEmpty_o ? cmd : {cmd[23:0],data_o};
+                    read_i <= fifoEmpty_o; // needed if we need to wait here
+                end 
 				3'd5:
 				begin
-					state <= done? 3'd6 : state;
+					sm_state <= 3'd6;
 					{count,value} <= cmd;
+                    start <= 1'b1;
+                    CSn <= 1'd0; // early assert
 				end
 				3'd6:
 				begin
-					state <= 3'd0;
-					start <= 1'b1;
+                    CSn <= 1'd0; // hold CSn asserted until transfer is done
+					sm_state <= (start|running) ? sm_state : 3'd7;
+                    // first cycle here, start flag will fire, then running
+                    // will take over
 				end
-
+                3'd7:
+                begin
+                    CSn <= 1'b1; // deassert
+                    // wait for counter to be finished
+                    sm_state <= finished ? 3'd0 : sm_state;
+                end
+				default:
+				begin
+                    // states 1-3: load 3 bytes, requesting another each time
+					sm_state <= fifoEmpty_o ? sm_state : sm_state+3'b1;
+					cmd <= fifoEmpty_o ? cmd : {cmd[23:0],data_o};
+					read_i <= 1'b1;
+				end
 			endcase
 		end
 	end
 
-	// timer
-	reg[15:0] counter;
-	wire[15:0] counter_next = counter-1'd1;
-	assign done = (counter==0);
+
+	// engine position timer
+    // reg finished
+	reg[15:0] timer;
+    wire active = (timer != 0);
+    wire[15:0] timer_next = timer-1'd1;
+
+    always @(posedge clk) begin
+        if (~resetn) begin
+            timer <= 0;
+            finished <= 1'b1;
+        end else begin
+            finished <= ~active;
+            if (start) begin
+                timer <= count;
+            end else begin
+                timer <= (active)? timer_next : 16'd0;
+            end
+        end
+    end
+
+    // Encoder simulation
+    // reg tic;
+    // reg tdc;
+    reg [10:0] pos;
 
 	always @(posedge clk) begin
-		if (start)
-			counter <= count;
-		else
-			counter <= done ? 16'd0 : counter_next[15:0];
+        if (~resetn) begin
+            pos <= 0;
+            {tic,tdc} <= 0;
+        end else begin
+            if (start) begin
+                if ( pos == 11'd1439 ) begin
+                    pos <= 0;
+                end else begin
+                    pos <= pos + 1'd1;
+                end
+                tic <= ~tic;
+                tdc <= ((pos==0)|(pos==720));
+            end else begin
+                pos <= pos;
+                tic <= tic;
+                tdc <= tdc;
+            end
+        end
 	end
 
 	// sender
-	wire [15:0] sendval = {2'b00, value[15:2]};
-	wire running;
+	wire [23:0] sendval = {2'b01, value, {6{1'b0}}};
 	spiword driver (.clk(clk), .we(start), .tx(sendval), .running(running), .MOSI(MOSI), .SCL(SCL));
 
-	always @(posedge clk) begin
-		if (resetn)
-			CSn <= 1'b1;
-		else
-			CSn <= !(start | running);
-	end
+    // oscilloscope diagnostics
 
-	reg was_running;
-	always @(posedge clk) was_running <= running;
+    assign slmiso= 1'b0;
+    assign test = finished;
 
-
+    // LED diagnostics
+    pulsegen visibleblink1 (.sysclk(clk), .step(utick), .trigger(newrx), .preset(16'd410), .pulse(led1));
+    pulsegen visibleblink2 (.sysclk(clk), .step(utick), .trigger(finished), .preset(16'd410), .pulse(led2));
+    pulsegen visibleblink3 (.sysclk(clk), .step(utick), .trigger(start), .preset(16'd410), .pulse(led3));
 endmodule

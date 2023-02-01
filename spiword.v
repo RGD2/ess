@@ -1,15 +1,12 @@
 module spiword (
     input wire clk,
     input wire we,
-    input wire [15:0] tx,
+    input wire [23:0] tx,
     output wire running,
     output wire MOSI,
     output reg SCL);
 
-// Runs a SPI bus transaction for two bytes at half system clock only.
-// *hdr = 'half data rate'
-// *qdr = 'quarter data rate'
-// *fdr = 'full data rate'
+// Runs a SPI bus transaction for three bytes at half system clock only.
 // N.B. Doesn't handle CS signal: Whatever runs this thing should do that.
 // running should not be used for CS! You need to send CS low *Before*
 // starting a transfer.
@@ -30,26 +27,24 @@ module spiword (
 //      sequential transfer from the FIFO: I didn't check.
 // )
 
-reg [15:0] sdelay;
-reg [15:0] dataout;
-wire MOSI = dataout[15];
+reg [23:0] sdelay;
+assign running = sdelay[23];
+
+reg [23:0] dataout;
+assign MOSI = dataout[23];
 
 reg SCL;
-
-assign running = sdelay[15];
 
 always @(posedge clk)
 begin
     if (running) begin
-        sdelay <= SCL ? sdelay : {sdelay[6:0], 1'b0};
-        dataout <= SCL ? dataout : {dataout[6:0],1'b0};
-        datain <= SCL ? {datain[6:0], MISO_} : datain;
+        sdelay <= SCL ? sdelay : {sdelay[22:0], 1'b0};
+        dataout <= SCL ? dataout : {dataout[22:0],1'b0};
         SCL <= ~SCL;
     end else begin
         SCL <= 1'b1;
-        datain <= datain;
         if (we) begin
-            sdelay <= 16'hffff;
+            sdelay <= 24'hffffff;
             dataout <= tx;
         end else begin
             sdelay <= sdelay;

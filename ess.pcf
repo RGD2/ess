@@ -20,4 +20,6 @@ set_io slce0n 85
 set_io slce1n 78
 # last for oscilloscope testing
 set_io test 1
+set_io test2 136
+
 
