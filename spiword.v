@@ -6,7 +6,7 @@ module spiword (
     output wire MOSI,
     output reg SCL);
 
-// Runs a dedicated bidirectional SPI bus transaction for two bytes at half system clock only.
+// Runs a SPI bus transaction for two bytes at half system clock only.
 // *hdr = 'half data rate'
 // *qdr = 'quarter data rate'
 // *fdr = 'full data rate'
