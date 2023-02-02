@@ -16,13 +16,18 @@ and output a corresponding incremental optical encoder single pair (TDC, TIC)
 		- Second is the output data for the DAQ
 		- Each state toggles the 'TIC' signal
 		- every 720th tick toggles 'TDC' high one state
-- Includes serial feedback on current state, fifo fullness status
+-~~ Includes serial feedback on current state, fifo fullness status ~~
+    - Raspberry Pi 1 Model B+ doesn't keep up with more than a few 10's RPM's, 
+    But this is 'good enough' for the purpose of exercising the ECU,
 - receive fifo space is limited, and no hardware flow control is available,
-so host code must send data only as consumed, and avoid buffer over and underflow
+so host code must send data only as consumed, and avoid buffer overflow.
+    - Underflow just results in 'slow' movement with 'pauses', but otherwise works
+    - RasPi1B+ cannot keep up with a very high speed anyway, so we'll leave it here,
+        - Works well enough for the intended application:
 
 - Application is 'hardware in the loop' testing for an engine ECU, 
 which is using a single cylinder pressure signal and crankshaft encoder to monitor engine position.
 
-- This design specifically allows 'replay' of previously collected signals data, 
-in order to conduct a 'fairer' test, which can include real-world imperfections.
-	- However, data can also just be synthesized 
+- This design *would* allow 'replay' of previously collected signals data, 
+    if the host can keep up with the required processing speed.
+	- However, data as synthesized is 'good enough' for our ECU to sync to.
