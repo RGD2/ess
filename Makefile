@@ -20,10 +20,17 @@ ess.asc: ess.json ess.pcf
 ess.bin: ess.asc
 	#icetime -d hx8k -c 25 ess.asc
 	yowasp-icepack ess.asc ess.bin
+	
+sinetest: sinetest.c
+	gcc -o sinetest sinetest.c -lm -lrt -Wno-int-to-pointer-cast	
+
+fake: sinetest
+	nice -20 ./sinetest
 
 clean:
 	rm -f testbench testbench.vcd
 	rm -f ess.json ess.asc ess.bin
+	rm -f sinetest
 
-.PHONY: all prog reset clean
+.PHONY: all prog reset fake clean
 
