@@ -103,6 +103,7 @@ module top (
 	// 6 writeout, loop
     // reg read_i; // already defined
 	reg [2:0] sm_state;
+    wire [2:0] sm_next = sm_state + 3'd1; 
 	reg start;
 	reg [31:0] cmd;
 	reg [15:0] value;
@@ -128,20 +129,20 @@ module top (
 				begin
                     // wait for available data
                     // then load a 4byte command
-					sm_state <= fifoEmpty_o ? 3'd0 : 3'd1;
+					sm_state <= fifoEmpty_o ? sm_state : sm_next;
                     read_i <= 1'b1;
 				end
                 3'd4:
                 begin
                     // read 4th byte, don't request another unless fifo is
                     // empty
-					sm_state <= fifoEmpty_o ? sm_state : sm_state+3'b1;
+					sm_state <= fifoEmpty_o ? sm_state : sm_next;
 					cmd <= fifoEmpty_o ? cmd : {cmd[23:0],data_o};
                     read_i <= fifoEmpty_o; // needed if we need to wait here
                 end 
 				3'd5:
 				begin
-					sm_state <= 3'd6;
+					sm_state <= sm_next;
 					{count,value} <= cmd;
                     start <= 1'b1;
                     CSn <= 1'd0; // early assert
@@ -149,7 +150,7 @@ module top (
 				3'd6:
 				begin
                     CSn <= 1'd0; // hold CSn asserted until transfer is done
-					sm_state <= (start|running) ? sm_state : 3'd7;
+					sm_state <= (start|running) ? sm_state : sm_next;
                     // first cycle here, start flag will fire, then running
                     // will take over
 				end
@@ -162,7 +163,7 @@ module top (
 				default:
 				begin
                     // states 1-3: load 3 bytes, requesting another each time
-					sm_state <= fifoEmpty_o ? sm_state : sm_state+3'b1;
+					sm_state <= fifoEmpty_o ? sm_state : sm_next;
 					cmd <= fifoEmpty_o ? cmd : {cmd[23:0],data_o};
 					read_i <= 1'b1;
 				end
@@ -195,23 +196,25 @@ module top (
     // reg tic;
     // reg tdc;
     reg [10:0] pos;
+    reg tic_;
 
 	always @(posedge clk) begin
         if (~resetn) begin
             pos <= 0;
-            {tic,tdc} <= 0;
+            {tic,tic_,tdc} <= 0;
         end else begin
+            tic <= tic_; // makes it later than tdc, slightly.
             if (start) begin
                 if ( pos == 11'd1439 ) begin
                     pos <= 0;
                 end else begin
                     pos <= pos + 1'd1;
                 end
-                tic <= ~tic;
+                tic_ <= ~tic_;
                 tdc <= ((pos==0)|(pos==720));
             end else begin
                 pos <= pos;
-                tic <= tic;
+                tic_ <= tic_;
                 tdc <= tdc;
             end
         end
@@ -227,7 +230,9 @@ module top (
     assign test = finished;
 
     // LED diagnostics
-    pulsegen visibleblink1 (.sysclk(clk), .step(utick), .trigger(newrx), .preset(16'd410), .pulse(led1));
-    pulsegen visibleblink2 (.sysclk(clk), .step(utick), .trigger(finished), .preset(16'd410), .pulse(led2));
+    pulsegen visibleblink1 (.sysclk(clk), .step(utick), .trigger(tdc), .preset(16'd410), .pulse(led1));
+    //pulsegen visibleblink2 (.sysclk(clk), .step(utick), .trigger(tic), .preset(16'd410), .pulse(led2));
+    always @* 
+        led2 <= tic;
     pulsegen visibleblink3 (.sysclk(clk), .step(utick), .trigger(start), .preset(16'd410), .pulse(led3));
 endmodule
