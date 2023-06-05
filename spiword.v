@@ -27,8 +27,9 @@ module spiword (
 //      sequential transfer from the FIFO: I didn't check.
 // )
 
-reg [23:0] sdelay;
-assign running = sdelay[23];
+reg [4:0] sdelay;
+assign running = |sdelay;
+wire [4:0] decrement = sdelay-5'd1;
 
 reg [23:0] dataout;
 assign MOSI = dataout[23];
@@ -38,13 +39,13 @@ reg SCL;
 always @(posedge clk)
 begin
     if (running) begin
-        sdelay <= SCL ? sdelay : {sdelay[22:0], 1'b0};
+        sdelay <= SCL ? sdelay : decrement;
         dataout <= SCL ? dataout : {dataout[22:0],1'b0};
         SCL <= ~SCL;
     end else begin
         SCL <= 1'b1;
         if (we) begin
-            sdelay <= 24'hffffff;
+            sdelay <= 5'd24;
             dataout <= tx;
         end else begin
             sdelay <= sdelay;
