@@ -31,3 +31,8 @@ which is using a single cylinder pressure signal and crankshaft encoder to monit
 - This design *would* allow 'replay' of previously collected signals data, 
     if the host can keep up with the required processing speed.
 	- However, data as synthesized is 'good enough' for our ECU to sync to.
+
+- Included is a python version  (works but very slow) and a C version (which is **barely** able to keep up with 400 RPM real time on a RasPi 1 B+). 
+    - the C version has a nasty habit of leaving an odd number of bytes on the com port buffer, since it doesn't respect signals and properly close the FD. It is *very* Quick&Dirty, and doesn't even do any error checking. 
+
+
