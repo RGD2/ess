@@ -1,3 +1,5 @@
 *.asc
 *.bin
 *.json
+a.out
+sinetest
